@@ -1,6 +1,6 @@
 """specs/07-conversacion-por-chat.feature: the chat command."""
 
-import openai
+import anthropic
 import pytest
 
 from morpho import cli
@@ -12,7 +12,7 @@ def test_missing_api_key_is_explained_without_a_traceback(
 ) -> None:
     assert cli.main() == 2
     captured = capsys.readouterr()
-    assert "Falta OPENAI_API_KEY" in captured.err
+    assert "Falta ANTHROPIC_API_KEY" in captured.err
     assert "Traceback" not in captured.err + captured.out
 
 
@@ -25,7 +25,7 @@ class _EchoAgent:
         self.states.append(state)
         if self.fail_first:
             self.fail_first = False
-            raise openai.OpenAIError("connection reset")
+            raise anthropic.AnthropicError("connection reset")
         return TurnResult(answer=f"eco: {raw_message}", path="answered", language="es")
 
 
@@ -54,5 +54,5 @@ def test_chat_ends_quietly_on_end_of_input() -> None:
 
 def test_model_errors_are_reported_and_the_chat_continues() -> None:
     output = _run(_EchoAgent(fail_first=True), ["hola", "hola otra vez"])
-    assert "No pude contactar al modelo (OpenAIError)" in output[1]
+    assert "No pude contactar al modelo (AnthropicError)" in output[1]
     assert output[2] == "Morpho: eco: hola otra vez"

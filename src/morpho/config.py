@@ -9,43 +9,48 @@ from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
 
-DEFAULT_LLM_MODEL = "gpt-6-luna"
-DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
-DEFAULT_REASONING_EFFORT = "low"
-REASONING_EFFORTS = frozenset({"none", "low", "medium", "high", "xhigh", "max"})
+DEFAULT_LLM_MODEL = "claude-haiku-4-5"
+DEFAULT_EMBEDDING_MODEL = "google/embeddinggemma-300m"
+DEFAULT_MODELS_DIR = Path.home() / ".cache" / "fastembed"
+EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
-# USD per 1M tokens, from developers.openai.com/api/docs/pricing (checked 2026-10-04).
+# USD per 1M tokens, Claude API list prices (claude-api reference, cached 2026-09-25).
+# Cache reads are billed at 10% of the input price. Embeddings run locally and cost nothing.
 PRICES_PER_MTOK: dict[str, dict[str, float]] = {
-    "gpt-6-luna": {"input": 0.10, "cached_input": 0.01, "output": 0.50},
-    "text-embedding-3-small": {"input": 0.02},
+    "claude-haiku-4-5": {"input": 1.00, "cached_input": 0.10, "output": 5.00},
+    "claude-sonnet-5-5": {"input": 2.00, "cached_input": 0.20, "output": 10.00},
+    "claude-opus-5-5": {"input": 4.00, "cached_input": 0.20, "output": 20.00},
 }
 
 
 @dataclass(frozen=True)
 class Settings:
-    openai_api_key: str | None
-    openai_base_url: str | None
+    anthropic_api_key: str | None
     llm_model: str
     embedding_model: str
-    reasoning_effort: str
+    effort: str | None
+    """Claude `output_config.effort`. Unset by default: Claude Haiku 4.5 does not accept it."""
+    models_dir: Path
+    """Where the local embedding model is downloaded (once, about 1.2 GB)."""
     var_dir: Path
 
     @property
     def has_api_key(self) -> bool:
-        return self.openai_api_key is not None
+        return self.anthropic_api_key is not None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:
-        effort = _value(env, "MORPHO_REASONING_EFFORT") or DEFAULT_REASONING_EFFORT
-        if effort not in REASONING_EFFORTS:
-            allowed = ", ".join(sorted(REASONING_EFFORTS))
-            raise ValueError(f"MORPHO_REASONING_EFFORT={effort!r} is not one of: {allowed}")
+        effort = _value(env, "MORPHO_EFFORT")
+        if effort is not None and effort not in EFFORTS:
+            allowed = ", ".join(sorted(EFFORTS))
+            raise ValueError(f"MORPHO_EFFORT={effort!r} is not one of: {allowed}")
+        models_dir = _value(env, "MORPHO_MODELS_DIR")
         return cls(
-            openai_api_key=_value(env, "OPENAI_API_KEY"),
-            openai_base_url=_value(env, "OPENAI_BASE_URL"),
+            anthropic_api_key=_value(env, "ANTHROPIC_API_KEY"),
             llm_model=_value(env, "MORPHO_LLM_MODEL") or DEFAULT_LLM_MODEL,
             embedding_model=_value(env, "MORPHO_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL,
-            reasoning_effort=effort,
+            effort=effort,
+            models_dir=Path(models_dir) if models_dir else DEFAULT_MODELS_DIR,
             var_dir=Path(_value(env, "MORPHO_VAR_DIR") or "var"),
         )
 

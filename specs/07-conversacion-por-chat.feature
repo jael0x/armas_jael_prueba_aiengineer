@@ -28,7 +28,7 @@ Característica: Conversación por chat
     Y no se consulta al modelo de lenguaje
 
   Escenario: El chat explica que falta la API key en vez de fallar
-    Dado que no hay una API key de OpenAI configurada
+    Dado que no hay una API key de Anthropic configurada
     Cuando el cliente abre el chat
-    Entonces el chat dice que falta la API key de OpenAI
+    Entonces el chat dice que falta la API key de Anthropic
     Y el chat termina sin mostrar un error de Python

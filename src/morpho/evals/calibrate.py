@@ -1,4 +1,4 @@
-"""Calibrates the retrieval threshold τ from the cached vectors (no API calls).
+"""Calibrates the retrieval threshold τ from the cached vectors (the model never runs).
 
 τ is the midpoint between the lowest best-score of an in-domain question and the highest
 best-score of an out-of-domain one. Questions the escalation rules already send to a person
@@ -92,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="print the report without writing")
     args = parser.parse_args(argv)
     model = load_settings().embedding_model
-    embedder = CachedEmbedder(EmbeddingCache(), model)  # cache only: never calls the API
+    embedder = CachedEmbedder(EmbeddingCache(), model)  # cache only: never runs the model
     try:
         retriever = Retriever.over_documents(embedder, Thresholds(tau=0.0))
         result, lines = calibrate(retriever, load_questions())

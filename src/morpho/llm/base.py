@@ -1,7 +1,8 @@
 """Provider-neutral port to the language model.
 
 The adapter runs the tool loop itself and calls back `run_tool`, so the agent never sees
-provider objects. Swapping OpenAI for Azure OpenAI or another provider touches only `llm/`.
+provider objects. Swapping Claude for Claude on Foundry or another provider touches only
+`llm/`.
 """
 
 from __future__ import annotations
@@ -53,6 +54,8 @@ class Completion:
     requests: int = 1
     """API requests made, one per tool round plus the final answer."""
     hit_tool_limit: bool = False
+    stop_reason: str = "end_turn"
+    """Why the last request stopped: `end_turn`, `tool_use`, `max_tokens`, `refusal`, ..."""
 
 
 ToolRunner = Callable[[ToolCall], dict[str, Any]]

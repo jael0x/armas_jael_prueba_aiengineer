@@ -3,7 +3,6 @@ cached vectors of the configured embedding model; the rest checks the logic offl
 
 from collections.abc import Sequence
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -17,8 +16,9 @@ from morpho.knowledge.documents import get_document
 from morpho.retrieval.embedder import (
     CachedEmbedder,
     EmbeddingCache,
+    FastEmbedEmbedder,
+    Kind,
     MissingEmbeddingError,
-    OpenAIEmbedder,
     Vectors,
 )
 from morpho.retrieval.retriever import (
@@ -31,7 +31,7 @@ from morpho.retrieval.retriever import (
 )
 from morpho.retrieval.store import NumpyStore
 
-# --- specs/02-recuperacion-de-politicas.feature (real vectors, no API calls)
+# --- specs/02-recuperacion-de-politicas.feature (real cached vectors, the model never runs)
 
 
 @pytest.fixture(scope="module")
@@ -90,10 +90,10 @@ class FakeEmbedder:
     def __init__(self, vectors: dict[str, list[float]], model: str = "fake-model") -> None:
         self.vectors = vectors
         self.model = model
-        self.calls: list[list[str]] = []
+        self.calls: list[tuple[Kind, list[str]]] = []
 
-    def embed(self, texts: Sequence[str]) -> Vectors:
-        self.calls.append(list(texts))
+    def embed(self, texts: Sequence[str], kind: Kind) -> Vectors:
+        self.calls.append((kind, list(texts)))
         return np.asarray([self.vectors[t] for t in texts], dtype=np.float32)
 
 
@@ -148,27 +148,33 @@ def test_document_text_is_title_then_body() -> None:
 def test_cache_round_trips_vectors_exactly(tmp_path: Path) -> None:
     vector = np.asarray([0.1, -0.25, 3.5], dtype=np.float32)
     cache = EmbeddingCache(tmp_path / "cache.json")
-    cache.put("text-embedding-3-small", "¿Hacen envíos a Miami?", vector)
+    cache.put("google/embeddinggemma-300m", "¿Hacen envíos a Miami?", "query", vector)
     cache.save()
     reloaded = EmbeddingCache(tmp_path / "cache.json")
-    stored = reloaded.get("text-embedding-3-small", "¿Hacen envíos a Miami?")
+    stored = reloaded.get("google/embeddinggemma-300m", "¿Hacen envíos a Miami?", "query")
     assert stored is not None
     np.testing.assert_array_equal(stored, vector)
-    assert reloaded.get("another-model", "¿Hacen envíos a Miami?") is None
+    assert reloaded.get("another-model", "¿Hacen envíos a Miami?", "query") is None
+
+
+def test_cache_keeps_query_and_document_vectors_apart(tmp_path: Path) -> None:
+    cache = EmbeddingCache(tmp_path / "cache.json")
+    cache.put("m", "Garantía", "document", np.asarray([1.0, 0.0], dtype=np.float32))
+    assert cache.get("m", "Garantía", "query") is None
 
 
 def test_cache_only_embedder_explains_how_to_record_a_missing_vector(tmp_path: Path) -> None:
-    embedder = CachedEmbedder(EmbeddingCache(tmp_path / "empty.json"), "text-embedding-3-small")
+    embedder = CachedEmbedder(EmbeddingCache(tmp_path / "empty.json"), "google/embeddinggemma-300m")
     with pytest.raises(MissingEmbeddingError, match=r"morpho\.evals\.record_embeddings"):
-        embedder.embed(["¿Cuánto tarda un reembolso?"])
+        embedder.embed(["¿Cuánto tarda un reembolso?"], "query")
 
 
 def test_only_missing_texts_go_to_the_fallback(tmp_path: Path) -> None:
     cache = EmbeddingCache(tmp_path / "cache.json")
-    cache.put("fake-model", "cached", np.asarray([1.0, 0.0], dtype=np.float32))
+    cache.put("fake-model", "cached", "query", np.asarray([1.0, 0.0], dtype=np.float32))
     fallback = FakeEmbedder({"new": [0.0, 1.0]})
-    vectors = CachedEmbedder(cache, "fake-model", fallback).embed(["cached", "new", "new"])
-    assert fallback.calls == [["new"]]
+    vectors = CachedEmbedder(cache, "fake-model", fallback).embed(["cached", "new", "new"], "query")
+    assert fallback.calls == [("query", ["new"])]
     np.testing.assert_array_equal(vectors, [[1.0, 0.0], [0.0, 1.0], [0.0, 1.0]])
 
 
@@ -177,18 +183,38 @@ def test_fallback_must_use_the_cache_model(tmp_path: Path) -> None:
         CachedEmbedder(EmbeddingCache(tmp_path / "c.json"), "model-a", FakeEmbedder({}, "model-b"))
 
 
-def test_openai_embedder_keeps_input_order_and_counts_tokens() -> None:
-    response = SimpleNamespace(
-        data=[
-            SimpleNamespace(index=1, embedding=[0.0, 1.0]),
-            SimpleNamespace(index=0, embedding=[1.0, 0.0]),
-        ],
-        usage=SimpleNamespace(total_tokens=12),
-    )
-    client = SimpleNamespace(embeddings=SimpleNamespace(create=lambda **_: response))
-    embedder = OpenAIEmbedder(client, "text-embedding-3-small")
-    np.testing.assert_array_equal(embedder.embed(["a", "b"]), [[1.0, 0.0], [0.0, 1.0]])
-    assert embedder.tokens_used == 12
+class _RecordingBackend:
+    def __init__(self) -> None:
+        self.seen: list[str] = []
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        self.seen.extend(texts)
+        return [[float(i), 1.0] for i in range(len(texts))]
+
+
+def test_local_embedder_adds_the_embeddinggemma_prompts_and_loads_once(tmp_path: Path) -> None:
+    backend, loads = _RecordingBackend(), []
+
+    def load(model: str, cache_dir: str | None) -> _RecordingBackend:
+        loads.append((model, cache_dir))
+        return backend
+
+    embedder = FastEmbedEmbedder("google/embeddinggemma-300m", tmp_path, load=load)
+    vectors = embedder.embed(["Garantía. Texto"], "document")
+    embedder.embed(["¿Cuánto dura?"], "query")
+    assert backend.seen == [
+        "title: none | text: Garantía. Texto",
+        "task: search result | query: ¿Cuánto dura?",
+    ]
+    assert loads == [("google/embeddinggemma-300m", str(tmp_path))]
+    assert vectors.dtype == np.float32
+    np.testing.assert_array_equal(vectors, [[0.0, 1.0]])
+
+
+def test_local_embedder_sends_plain_text_for_models_without_prompts() -> None:
+    backend = _RecordingBackend()
+    FastEmbedEmbedder("other/model", load=lambda *_: backend).embed(["hola"], "query")
+    assert backend.seen == ["hola"]
 
 
 # --- thresholds and calibration
@@ -196,7 +222,7 @@ def test_openai_embedder_keeps_input_order_and_counts_tokens() -> None:
 
 def test_missing_threshold_explains_how_to_calibrate(tmp_path: Path) -> None:
     with pytest.raises(NotCalibratedError, match=r"morpho\.evals\.calibrate"):
-        load_thresholds("text-embedding-3-small", tmp_path / "thresholds.json")
+        load_thresholds("google/embeddinggemma-300m", tmp_path / "thresholds.json")
 
 
 def test_threshold_is_the_midpoint_between_in_and_out_of_domain() -> None:

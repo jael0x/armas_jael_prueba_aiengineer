@@ -27,9 +27,9 @@ def test_in_memory_log_keeps_records_without_a_file() -> None:
 
 def test_cost_uses_cached_and_output_prices() -> None:
     usage = Usage(input_tokens=2_000, output_tokens=500, cached_tokens=1_000)
-    # gpt-6-luna: $0.10 input, $0.01 cached input, $0.50 output per 1M tokens
-    expected = (1_000 * 0.10 + 1_000 * 0.01 + 500 * 0.50) / 1_000_000
-    assert cost_usd("gpt-6-luna", usage) == round(expected, 8)
+    # claude-haiku-4-5: $1 input, $0.10 cache read, $5 output per 1M tokens
+    expected = (1_000 * 1.00 + 1_000 * 0.10 + 500 * 5.00) / 1_000_000
+    assert cost_usd("claude-haiku-4-5", usage) == round(expected, 8)
 
 
 def test_unknown_model_costs_zero() -> None:

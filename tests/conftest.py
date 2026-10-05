@@ -7,11 +7,11 @@ import pytest
 import morpho.config
 
 _ENV_VARS = (
-    "OPENAI_API_KEY",
-    "OPENAI_BASE_URL",
+    "ANTHROPIC_API_KEY",
     "MORPHO_LLM_MODEL",
     "MORPHO_EMBEDDING_MODEL",
-    "MORPHO_REASONING_EFFORT",
+    "MORPHO_EFFORT",
+    "MORPHO_MODELS_DIR",
     "MORPHO_VAR_DIR",
 )
 
