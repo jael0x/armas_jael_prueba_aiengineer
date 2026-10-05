@@ -17,6 +17,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Protocol
 
 from morpho.guardrails.normalize import normalize
@@ -41,6 +42,7 @@ _STATUS_QUESTION = re.compile(
     r"|seguimiento|where\s+is|status|track\w*)\b"
 )
 _SENTENCE_BREAK = re.compile(r"(?<=[.?!])\s+|\n+")
+_BOLD = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)  # the chat is plain text; the model sometimes bolds
 # A draft cut by the token limit or stopped by the model's safety classifier is never sent.
 _UNFINISHED_STOPS = frozenset({"max_tokens", "refusal"})
 
@@ -143,7 +145,20 @@ class Agent:
                 path = "asked_order_id"
                 parts.append(templates.ask_order_id)
             else:
-                draft = self._draft(message.text, language, state, injection=rules.prompt_injection)
+                question = (
+                    _without_injection(message.text) if rules.prompt_injection else message.text
+                )
+                draft = (
+                    self._draft(
+                        question,
+                        language,
+                        state,
+                        injection=rules.prompt_injection,
+                        refund_amount_usd=rules.refund_amount_usd,
+                    )
+                    if question
+                    else None
+                )
                 if draft:
                     path = "replaced" if draft.problems else "answered"
                     parts.append(draft.text)
@@ -200,6 +215,7 @@ class Agent:
         *,
         escalated_elsewhere: bool = False,
         injection: bool = False,
+        refund_amount_usd: Decimal | None = None,
     ) -> _Draft | None:
         """Ask the model about `question`, or return None when there is nothing to answer from."""
         hits = self.retriever.retrieve(question)
@@ -218,7 +234,11 @@ class Agent:
 
         completion = self.llm.complete(
             instructions=build_instructions(
-                language, documents, escalated_elsewhere=escalated_elsewhere, injection=injection
+                language,
+                documents,
+                escalated_elsewhere=escalated_elsewhere,
+                injection=injection,
+                refund_amount_usd=refund_amount_usd,
             ),
             messages=[*state.history, Message("user", question)],
             tools=[ORDER_TOOL],
@@ -236,7 +256,7 @@ class Agent:
             problems = (*problems, "empty_answer")
         if completion.stop_reason in _UNFINISHED_STOPS:
             problems = (*problems, f"stop_{completion.stop_reason}")
-        text = completion.text.strip()
+        text = _BOLD.sub(r"\1", completion.text).strip()
         if problems:
             templates = TEMPLATES[language]
             text = (
@@ -260,12 +280,22 @@ def _asks_for_own_order(folded: str) -> bool:
     return bool(_MY_ORDER.search(folded) and _STATUS_QUESTION.search(folded))
 
 
+def _without_injection(text: str) -> str | None:
+    """The sentences of a message that do not try to change Morpho's rules, or None."""
+    keep = [
+        sentence.strip()
+        for sentence in _SENTENCE_BREAK.split(text)
+        if sentence.strip() and not evaluate(normalize(sentence)).prompt_injection
+    ]
+    return " ".join(keep) or None
+
+
 def _residual_question(text: str) -> str | None:
     """Parts of an escalated message that are questions Morpho can still answer."""
     keep = []
     for sentence in _SENTENCE_BREAK.split(text):
         result = evaluate(normalize(sentence))
-        if result.escalate or result.refund_intent:
+        if result.escalate or result.refund_intent or result.prompt_injection:
             continue
         if "?" in sentence or _order_ids(sentence):
             keep.append(sentence.strip())
