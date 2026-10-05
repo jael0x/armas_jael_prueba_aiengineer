@@ -12,6 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
+morpho = "morpho.cli:main"
 morpho-mcp = "morpho.mcp_server:main"
 
 [project.optional-dependencies]
