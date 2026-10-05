@@ -76,13 +76,13 @@ class Retriever:
         thresholds: Thresholds,
         documents: Sequence[PolicyDocument] = DOCUMENTS,
     ) -> Retriever:
-        vectors = embedder.embed([document_text(doc) for doc in documents])
+        vectors = embedder.embed([document_text(doc) for doc in documents], "document")
         store = NumpyStore([doc.doc_id for doc in documents], vectors)
         return cls(embedder, store, thresholds, size=len(documents))
 
     def rank(self, question: str) -> list[Hit]:
         """Every document with its score, best first. Used for traces and calibration."""
-        query = self._embedder.embed([question])[0]
+        query = self._embedder.embed([question], "query")[0]
         return [Hit(doc_id, score) for doc_id, score in self._store.search(query, self._size)]
 
     def retrieve(self, question: str) -> list[Hit]:
