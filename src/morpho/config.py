@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 
 DEFAULT_LLM_MODEL = "claude-haiku-4-5"
+DEFAULT_JUDGE_MODEL = "claude-sonnet-5-5"
 DEFAULT_EMBEDDING_MODEL = "google/embeddinggemma-300m"
 DEFAULT_MODELS_DIR = Path.home() / ".cache" / "fastembed"
 EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
@@ -27,6 +28,8 @@ PRICES_PER_MTOK: dict[str, dict[str, float]] = {
 class Settings:
     anthropic_api_key: str | None
     llm_model: str
+    judge_model: str
+    """Grades the golden set (`morpho.evals.run_eval`); stronger than the agent's model."""
     embedding_model: str
     effort: str | None
     """Claude `output_config.effort`. Unset by default: Claude Haiku 4.5 does not accept it."""
@@ -48,6 +51,7 @@ class Settings:
         return cls(
             anthropic_api_key=_value(env, "ANTHROPIC_API_KEY"),
             llm_model=_value(env, "MORPHO_LLM_MODEL") or DEFAULT_LLM_MODEL,
+            judge_model=_value(env, "MORPHO_JUDGE_MODEL") or DEFAULT_JUDGE_MODEL,
             embedding_model=_value(env, "MORPHO_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL,
             effort=effort,
             models_dir=Path(models_dir) if models_dir else DEFAULT_MODELS_DIR,

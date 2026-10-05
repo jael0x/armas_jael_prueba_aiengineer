@@ -10,6 +10,7 @@ def test_defaults_apply_when_nothing_is_set() -> None:
     assert settings.anthropic_api_key is None
     assert settings.has_api_key is False
     assert settings.llm_model == "claude-haiku-4-5"
+    assert settings.judge_model == "claude-sonnet-5-5"
     assert settings.embedding_model == "google/embeddinggemma-300m"
     assert settings.effort is None
     assert settings.models_dir == DEFAULT_MODELS_DIR
