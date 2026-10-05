@@ -11,6 +11,9 @@ dependencies = [
     "text2num>=3.1.0,<4",
 ]
 
+[project.scripts]
+morpho-mcp = "morpho.mcp_server:main"
+
 [project.optional-dependencies]
 eval = [
     "azure-ai-evaluation>=1.18.7,<2",
