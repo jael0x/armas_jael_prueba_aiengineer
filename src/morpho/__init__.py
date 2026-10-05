@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from morpho!")
+"""Morpho: TiendaHogar's customer support agent."""
+
+__version__ = "0.1.0"
