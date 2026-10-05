@@ -1,0 +1,53 @@
+[project]
+name = "morpho"
+version = "0.1.0"
+description = "Morpho: agente de soporte al cliente de TiendaHogar con RAG, consulta de pedidos y escalamiento a humanos."
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=2.3.0,<3",
+    "numpy>=2.5.3,<3",
+    "openai>=3.24.0,<4",
+    "python-dotenv>=1.2.4,<2",
+    "text2num>=3.1.0,<4",
+]
+
+[project.scripts]
+morpho = "morpho:main"
+
+[project.optional-dependencies]
+eval = [
+    "azure-ai-evaluation>=1.18.7,<2",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -m 'not live'"
+markers = [
+    "live: calls the real OpenAI API; needs OPENAI_API_KEY (run with: pytest -m live)",
+]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
