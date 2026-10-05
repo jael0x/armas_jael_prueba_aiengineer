@@ -1066,12 +1066,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "azure-ai-evaluation", marker = "extra == 'eval'", specifier = ">=1.18.7" },
-    { name = "mcp", specifier = ">=2.3.0" },
-    { name = "numpy", specifier = ">=2.5.3" },
-    { name = "openai", specifier = ">=3.24.0" },
-    { name = "python-dotenv", specifier = ">=1.2.4" },
-    { name = "text2num", specifier = ">=3.1.0" },
+    { name = "azure-ai-evaluation", marker = "extra == 'eval'", specifier = ">=1.18.7,<2" },
+    { name = "mcp", specifier = ">=2.3.0,<3" },
+    { name = "numpy", specifier = ">=2.5.3,<3" },
+    { name = "openai", specifier = ">=3.24.0,<4" },
+    { name = "python-dotenv", specifier = ">=1.2.4,<2" },
+    { name = "text2num", specifier = ">=3.1.0,<4" },
 ]
 provides-extras = ["eval"]
 
