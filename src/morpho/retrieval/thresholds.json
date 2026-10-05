@@ -1,0 +1,11 @@
+{
+  "google/embeddinggemma-300m": {
+    "tau": 0.3342,
+    "delta": 0.1,
+    "separation": 0.1252,
+    "min_in_domain": 0.3968,
+    "max_out_of_domain": 0.2716,
+    "top1": "31/31",
+    "calibrated_on": "2026-10-05"
+  }
+}

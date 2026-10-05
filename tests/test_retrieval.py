@@ -36,12 +36,9 @@ from morpho.retrieval.store import NumpyStore
 
 @pytest.fixture(scope="module")
 def policy_retriever() -> Retriever:
+    # The cache and thresholds are committed: a missing vector or τ is a failure, not a skip.
     model = Settings.from_env({}).embedding_model
-    try:
-        thresholds = load_thresholds(model)
-        return Retriever.over_documents(CachedEmbedder(EmbeddingCache(), model), thresholds)
-    except (MissingEmbeddingError, NotCalibratedError) as exc:
-        pytest.skip(f"Falta el caché de vectores o la calibración de {model}: {exc}")
+    return Retriever.over_documents(CachedEmbedder(EmbeddingCache(), model), load_thresholds(model))
 
 
 @pytest.mark.parametrize(
