@@ -14,6 +14,7 @@ class FakeReply:
     text: str | Callable[[list[dict[str, Any]]], str]
     """Final answer, or a function that builds it from the tool results."""
     tool_calls: tuple[ToolCall, ...] = ()
+    stop_reason: str = "end_turn"
 
 
 @dataclass(frozen=True)
@@ -51,4 +52,5 @@ class FakeLLM:
             usage=Usage(input_tokens=1000, output_tokens=100),
             requests=len(made) + 1,
             hit_tool_limit=len(reply.tool_calls) > max_tool_rounds,
+            stop_reason=reply.stop_reason,
         )

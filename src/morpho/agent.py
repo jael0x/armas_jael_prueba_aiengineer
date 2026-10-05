@@ -41,6 +41,8 @@ _STATUS_QUESTION = re.compile(
     r"|seguimiento|where\s+is|status|track\w*)\b"
 )
 _SENTENCE_BREAK = re.compile(r"(?<=[.?!])\s+|\n+")
+# A draft cut by the token limit or stopped by the model's safety classifier is never sent.
+_UNFINISHED_STOPS = frozenset({"max_tokens", "refusal"})
 
 
 class DocumentRetriever(Protocol):
@@ -232,6 +234,8 @@ class Agent:
         ).problems
         if not completion.text.strip():
             problems = (*problems, "empty_answer")
+        if completion.stop_reason in _UNFINISHED_STOPS:
+            problems = (*problems, f"stop_{completion.stop_reason}")
         text = completion.text.strip()
         if problems:
             templates = TEMPLATES[language]

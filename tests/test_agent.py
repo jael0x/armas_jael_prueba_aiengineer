@@ -323,6 +323,16 @@ def test_draft_citing_a_document_that_was_not_retrieved_is_replaced() -> None:
     assert "citation" in result.validation_problems
 
 
+@pytest.mark.parametrize("stop_reason", ["refusal", "max_tokens"])
+def test_draft_the_model_did_not_finish_is_replaced(stop_reason: str) -> None:
+    reply = FakeReply("Los envíos a otras ciudades tardan", stop_reason=stop_reason)
+    agent, _ = _agent([reply], {"envío": DOC3})
+    result = _turn(agent, "¿Cuánto tarda un envío a otra ciudad?")
+    assert result.path == "replaced"
+    assert result.answer == TEMPLATES["es"].safe_fallback
+    assert f"stop_{stop_reason}" in result.validation_problems
+
+
 # --- specs/09-registro-de-handoffs-y-turnos.feature
 
 
