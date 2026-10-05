@@ -1,0 +1,21 @@
+/docs
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Secrets
+.env
+
+# Runtime output (traces, handoff records)
+/var/
+
+# Local tooling
+.claude/
+.DS_Store
