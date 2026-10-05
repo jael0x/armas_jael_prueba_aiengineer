@@ -19,11 +19,6 @@ dependencies = [
 morpho = "morpho.cli:main"
 morpho-mcp = "morpho.mcp_server:main"
 
-[project.optional-dependencies]
-eval = [
-    "azure-ai-evaluation>=1.18.7,<2",
-]
-
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]
 build-backend = "uv_build"
