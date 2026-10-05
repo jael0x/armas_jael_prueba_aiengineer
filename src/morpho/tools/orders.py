@@ -40,6 +40,8 @@ ORDERS: Mapping[str, Mapping[str, str | None]] = {
 # A bare "1001" is rejected on purpose: guessing the prefix could return someone else's order.
 _ORDER_ID = re.compile(r"ORD[\s-]?(\d{4})", re.IGNORECASE)
 _MAX_ECHO = 64
+ORDER_ID_EXAMPLE = "ORD-1234"
+"""The format shown to customers in prompts and templates; never a real order."""
 
 
 def normalize_order_id(raw: str) -> str | None:

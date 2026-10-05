@@ -90,3 +90,14 @@ def test_status_that_differs_from_the_lookup_is_rejected() -> None:
 
 def test_cited_documents_are_listed_once_in_order() -> None:
     assert cited_documents("A [Doc2]. B [Doc4]. C [doc2].") == ("doc2", "doc4")
+
+
+def test_the_order_id_format_example_is_not_an_invented_order() -> None:
+    assert _problems("¿Me das el ID de tu pedido? Tiene el formato ORD-1234.") == ()
+
+
+def test_a_duration_the_customer_stated_can_be_repeated() -> None:
+    draft = "Aunque pasaron 45 días, la garantía de 6 meses cubre el defecto [Doc1]."
+    customer = "La compré hace 45 días y tiene un defecto de fábrica"
+    assert _problems(draft, {"doc1": DOC1}, customer=customer) == ()
+    assert _problems(draft, {"doc1": DOC1}) == (DURATION,)
