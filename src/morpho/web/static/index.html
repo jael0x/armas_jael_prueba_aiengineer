@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Morpho · TiendaHogar</title>
+  <meta name="description" content="Prueba a Morpho, el agente de soporte de TiendaHogar: chat, detalle de cada turno y pruebas en vivo.">
+  <link rel="icon" href="/static/morpho.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img class="mark" src="/static/morpho.svg" alt="" width="40" height="40">
+      <div>
+        <p class="eyebrow">TiendaHogar · soporte</p>
+        <h1>Morpho</h1>
+      </div>
+    </div>
+    <div class="pills" aria-live="polite">
+      <span class="pill" id="pill-model">Modelo: …</span>
+      <span class="pill" id="pill-embedder">Embeddings: …</span>
+      <span class="pill" id="pill-key">Key: …</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Secciones">
+      <button class="tab" role="tab" id="tab-chat" aria-controls="view-chat" aria-selected="true">Chat</button>
+      <button class="tab" role="tab" id="tab-tests" aria-controls="view-tests" aria-selected="false" tabindex="-1">Pruebas en vivo</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-chat" class="chat-layout" role="tabpanel" aria-labelledby="tab-chat">
+      <div class="card chat">
+        <div class="card-head">
+          <h2>Conversación</h2>
+          <button type="button" class="ghost" id="new-chat">Nueva conversación</button>
+        </div>
+        <ol class="messages" id="messages" aria-live="polite">
+          <li class="hint" id="empty-hint">
+            Escribe como si fueras un cliente de TiendaHogar, o elige un escenario. Toca una respuesta de Morpho para ver qué pasó en ese turno.
+          </li>
+        </ol>
+
+        <div class="key-setup" id="key-setup" hidden>
+          <h3>Falta la API key de Claude</h3>
+          <p><strong>Opción 1.</strong> Crea un archivo <code>.env</code> en la raíz del repositorio con <code>ANTHROPIC_API_KEY=sk-ant-…</code> y vuelve a correr <code>uv run morpho-ui</code>.</p>
+          <p><strong>Opción 2.</strong> Pégala aquí. Queda solo en la memoria de este servidor: no se escribe en disco y se borra al cerrarlo.</p>
+          <form class="key-form" id="key-form">
+            <label class="sr-only" for="key-input">API key de Anthropic</label>
+            <input id="key-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" required>
+            <button type="submit" class="primary" id="key-submit">Usar esta key</button>
+          </form>
+          <p class="error" id="key-error" role="alert" hidden></p>
+        </div>
+
+        <div class="scenarios" id="scenarios" role="group" aria-label="Escenarios rápidos"></div>
+        <form class="composer" id="composer">
+          <label class="sr-only" for="input">Mensaje para Morpho</label>
+          <textarea id="input" rows="2" placeholder="¿Cuánto dura la garantía de una lavadora?"></textarea>
+          <button type="submit" class="primary" id="send">Enviar</button>
+        </form>
+        <p class="muted small" id="composer-note" hidden></p>
+      </div>
+
+      <aside class="card details" aria-labelledby="details-title">
+        <h2 id="details-title">Qué pasó en el turno</h2>
+        <div id="details">
+          <p class="muted">Aquí aparece el camino de cada respuesta: reglas, documentos recuperados con su score, consultas de pedidos, el validador, tokens, costo y latencia.</p>
+        </div>
+      </aside>
+    </section>
+
+    <section id="view-tests" class="tests-layout" role="tabpanel" aria-labelledby="tab-tests" hidden>
+      <div class="card tests">
+        <h2>Pruebas en vivo</h2>
+        <p>Corre los escenarios de las specs 01, 03, 06 y 07 contra Claude: pedidos, garantías, envíos, inyección, un mensaje mixto e inglés. Pasan por el agente completo, igual que el chat. Tarda unos 25 segundos y cuesta unos USD 0.03.</p>
+        <p class="muted small">Es lo mismo que <code id="live-command">uv run pytest -m live</code>. Las pruebas offline, sin key ni red, se corren con <code>uv run pytest tests/</code>.</p>
+        <div class="tests-actions">
+          <button type="button" class="primary" id="run-tests">Correr pruebas en vivo</button>
+          <span class="badge" id="tests-summary" hidden></span>
+        </div>
+        <p class="error" id="tests-error" role="alert" hidden></p>
+        <pre class="console" id="tests-output" tabindex="0" aria-label="Salida de pytest" hidden></pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

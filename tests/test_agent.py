@@ -212,6 +212,12 @@ def test_markdown_bold_from_the_model_is_removed() -> None:
     assert result.answer == "Las lavadoras tienen 12 meses de garantía [Doc1]."
 
 
+def test_order_ids_reach_the_model_in_canonical_form() -> None:
+    agent, llm = _agent(["Tu pedido ORD-1001 está En tránsito."])
+    _turn(agent, "¿Dónde está mi pedido ord 1001?")
+    assert llm.calls[0].messages[-1].text == "¿Dónde está mi pedido ORD-1001?"
+
+
 # --- specs/06-resistencia-a-inyeccion-de-prompts.feature
 
 

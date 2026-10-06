@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -62,10 +63,20 @@ class FastEmbedEmbedder:
         self._cache_dir = str(cache_dir) if cache_dir else None
         self._load = load or _load_fastembed
         self._backend: Any = None
+        self._loading = threading.Lock()
+
+    @property
+    def loaded(self) -> bool:
+        return self._backend is not None
+
+    def load(self) -> None:
+        """Loads the model now (downloading it the first time) instead of on the first miss."""
+        with self._loading:
+            if self._backend is None:
+                self._backend = self._load(self.model, self._cache_dir)
 
     def embed(self, texts: Sequence[str], kind: Kind) -> Vectors:
-        if self._backend is None:
-            self._backend = self._load(self.model, self._cache_dir)
+        self.load()
         template = PROMPTS.get(self.model, {}).get(kind, "{}")
         rows = self._backend.embed([template.format(text) for text in texts])
         return np.asarray(list(rows), dtype=np.float32)

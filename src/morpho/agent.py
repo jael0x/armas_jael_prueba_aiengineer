@@ -240,7 +240,7 @@ class Agent:
                 injection=injection,
                 refund_amount_usd=refund_amount_usd,
             ),
-            messages=[*state.history, Message("user", question)],
+            messages=[*state.history, Message("user", _with_canonical_order_ids(question))],
             tools=[ORDER_TOOL],
             run_tool=run_tool,
             max_tool_rounds=self.max_tool_rounds,
@@ -274,6 +274,11 @@ class Agent:
 def _order_ids(text: str) -> list[str]:
     ids = (normalize_order_id(match) for match in _ORDER_ID.findall(text))
     return sorted({order_id for order_id in ids if order_id})
+
+
+def _with_canonical_order_ids(text: str) -> str:
+    """ "ord 1001" becomes "ORD-1001": the model then passes the ID as the tool expects it."""
+    return _ORDER_ID.sub(lambda match: normalize_order_id(match.group()) or match.group(), text)
 
 
 def _asks_for_own_order(folded: str) -> bool:
