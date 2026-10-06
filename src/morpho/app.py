@@ -12,12 +12,10 @@ from morpho.retrieval.embedder import CachedEmbedder, EmbeddingCache, FastEmbedE
 from morpho.retrieval.retriever import Retriever, load_thresholds
 
 
-def build_agent(settings: Settings) -> Agent:
-    embedder = CachedEmbedder(
-        EmbeddingCache(),
-        settings.embedding_model,
-        fallback=FastEmbedEmbedder(settings.embedding_model, settings.models_dir),
-    )
+def build_agent(settings: Settings, *, local_embedder: FastEmbedEmbedder | None = None) -> Agent:
+    """`local_embedder` lets a caller share a model it already loaded (the web UI warms it up)."""
+    local = local_embedder or FastEmbedEmbedder(settings.embedding_model, settings.models_dir)
+    embedder = CachedEmbedder(EmbeddingCache(), settings.embedding_model, fallback=local)
     client = Anthropic(api_key=settings.anthropic_api_key)
     return Agent(
         llm=AnthropicClient(client, settings.llm_model, settings.effort),

@@ -208,6 +208,21 @@ def test_local_embedder_adds_the_embeddinggemma_prompts_and_loads_once(tmp_path:
     np.testing.assert_array_equal(vectors, [[0.0, 1.0]])
 
 
+def test_local_embedder_can_load_ahead_of_the_first_question() -> None:
+    loads: list[str] = []
+
+    def load(model: str, _cache_dir: str | None) -> _RecordingBackend:
+        loads.append(model)
+        return _RecordingBackend()
+
+    embedder = FastEmbedEmbedder("m", load=load)
+    assert embedder.loaded is False
+    embedder.load()
+    embedder.embed(["hola"], "query")
+    assert embedder.loaded is True
+    assert loads == ["m"]
+
+
 def test_local_embedder_sends_plain_text_for_models_without_prompts() -> None:
     backend = _RecordingBackend()
     FastEmbedEmbedder("other/model", load=lambda *_: backend).embed(["hola"], "query")
