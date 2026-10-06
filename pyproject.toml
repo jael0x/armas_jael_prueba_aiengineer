@@ -47,6 +47,7 @@ testpaths = ["tests"]
 addopts = "-ra -m 'not live'"
 markers = [
     "live: calls the real Claude API; needs ANTHROPIC_API_KEY (run with: pytest -m live)",
+    "challenge: the three cases the challenge asks for (run with: pytest -m challenge)",
 ]
 
 [tool.pyright]

@@ -4,8 +4,11 @@ import json
 from types import SimpleNamespace
 from typing import Any
 
+import anthropic
+import pytest
+
 from morpho.llm.anthropic_client import MAX_TOKENS, AnthropicClient
-from morpho.llm.base import Completion, Message, ToolCall
+from morpho.llm.base import Completion, LLMUnavailableError, Message, ToolCall
 from morpho.prompts import ORDER_TOOL
 from morpho.tools.orders import consultar_estado_pedido
 
@@ -138,3 +141,13 @@ def test_refusal_is_reported_with_its_stop_reason() -> None:
     completion = _complete(client, [])
     assert (completion.text, completion.stop_reason) == ("", "refusal")
     assert completion.hit_tool_limit is False
+
+
+def test_api_errors_become_a_provider_neutral_error() -> None:
+    class _Failing:
+        def create(self, **_: Any) -> SimpleNamespace:
+            raise anthropic.AnthropicError("overloaded")
+
+    client = AnthropicClient(SimpleNamespace(messages=_Failing()), "claude-haiku-4-5")
+    with pytest.raises(LLMUnavailableError, match="overloaded"):
+        _complete(client, [])

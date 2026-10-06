@@ -117,5 +117,17 @@ class TraceLog(JsonLines):
             "morpho.latency_ms": round(latency_ms, 1),
             "morpho.cost_usd": cost_usd(model, usage),
         }
-        self.append(json.loads(redact(json.dumps(trace, ensure_ascii=False))))
+        trace = _redact_strings(trace)
+        self.append(trace)
         return trace
+
+
+def _redact_strings(value: Any) -> Any:
+    """Redacts text fields only: numbers like a cost of 0.00401245 must stay numbers."""
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, dict):
+        return {key: _redact_strings(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_strings(item) for item in value]
+    return value

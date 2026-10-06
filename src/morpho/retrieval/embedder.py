@@ -46,6 +46,10 @@ class MissingEmbeddingError(LookupError):
     pass
 
 
+class EmbedderUnavailableError(RuntimeError):
+    """The local model could not be loaded, for example with no network on the first download."""
+
+
 class FastEmbedEmbedder:
     """Runs the model on this machine with ONNX Runtime. No API key, no per-token cost.
 
@@ -63,6 +67,7 @@ class FastEmbedEmbedder:
         self._cache_dir = str(cache_dir) if cache_dir else None
         self._load = load or _load_fastembed
         self._backend: Any = None
+        self._failure: str | None = None
         self._loading = threading.Lock()
 
     @property
@@ -70,10 +75,21 @@ class FastEmbedEmbedder:
         return self._backend is not None
 
     def load(self) -> None:
-        """Loads the model now (downloading it the first time) instead of on the first miss."""
+        """Loads the model now (downloading it the first time) instead of on the first miss.
+
+        A failure is remembered, so later questions fail fast instead of retrying a 1.2 GB
+        download each time; restarting the process tries again.
+        """
         with self._loading:
-            if self._backend is None:
+            if self._backend is not None:
+                return
+            if self._failure is not None:
+                raise EmbedderUnavailableError(self._failure)
+            try:
                 self._backend = self._load(self.model, self._cache_dir)
+            except Exception as exc:  # fastembed raises plain ValueError and OSError
+                self._failure = f"{exc.__class__.__name__}: {exc}"
+                raise EmbedderUnavailableError(self._failure) from exc
 
     def embed(self, texts: Sequence[str], kind: Kind) -> Vectors:
         self.load()

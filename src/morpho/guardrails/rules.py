@@ -58,6 +58,9 @@ class RuleResult:
         return bool(self.reasons)
 
 
+_NEW_QUESTION = re.compile(r"\?|\bORD[\s-]?\d{4}\b", re.IGNORECASE)
+
+
 def _any(*patterns: str) -> re.Pattern[str]:
     return re.compile("|".join(f"(?:{p})" for p in patterns))
 
@@ -113,6 +116,9 @@ _MISTREATMENT = _any(
     r"\bacos\w*",
     r"\bmala\s+actitud\b",
     r"\bfalta\s+de\s+respeto\b",
+    r"\bfalt\w*\s+(?:el\s+)?respeto\b",
+    r"\bmal\s*educad\w*",
+    r"\bdescortes\w*",
     r"\birrespetu\w*",
     r"\bprepoten\w*",
     r"\bhumill\w*",
@@ -135,7 +141,7 @@ _BAD_SERVICE = _any(
     r"\b(?:pesima|horrible|terrible)\s+atencion\b",
 )
 _BILLING = _any(
-    r"\bcobr\w*\s+(?:doble|dos\s+veces|de\s+mas|demas|mal)\b",
+    r"\bcobr\w*\s+(?:doble|(?:dos|2)\s+veces|de\s+mas|demas|mal)\b",
     r"\bdoble\s+cobro\b",
     r"\b(?:cobro|cargo)\s+(?:duplicado|doble|indebido|no\s+reconocido|que\s+no\s+reconozco)\b",
     r"\bno\s+reconozco\s+(?:el|este|ese|un)\s+(?:cargo|cobro)\b",
@@ -145,7 +151,7 @@ _BILLING = _any(
     r"\bme\s+facturaron\s+mal\b",
     r"\bcontracargo\b",
     r"\bdisputa\w*\s+(?:de|del|un|el)\s+(?:cargo|cobro|factura)\b",
-    r"\b(?:double\s+charged|charged\s+(?:me\s+)?twice|overcharg\w*|chargeback)\b",
+    r"\b(?:double\s+charged|(?:charged|billed)\s+(?:me\s+)?twice|overcharg\w*|chargeback)\b",
     r"\b(?:billing|invoice)\s+(?:error|dispute|issue|problem|mistake)\b",
     r"\bunauthori[sz]ed\s+charge\b",
 )
@@ -201,7 +207,7 @@ def evaluate(message: NormalizedMessage, *, awaiting_refund_amount: bool = False
     if _HUMAN_REQUEST.search(text):
         reasons.append(Reason.HUMAN_REQUEST)
 
-    amounts = extract_amounts(message.text)
+    amounts = extract_amounts(message.text, keep_years=awaiting_refund_amount)
     # Bare numbers count as dollars, since Doc 4 states the limit in dollars. Bare numbers
     # under 10 are quantities ("devolver 2 licuadoras"), not prices.
     dollar_values = [
@@ -213,6 +219,11 @@ def evaluate(message: NormalizedMessage, *, awaiting_refund_amount: bool = False
         _REFUND.search(text)
         or (_RETURN_OR_APPROVAL.search(text) and dollar_values)
         or (awaiting_refund_amount and amounts)
+    )
+    # Waiting for the amount ends when the customer moves on ("¿Cómo va ORD-1001?"); a reply
+    # like "no estoy seguro" keeps the request open.
+    still_waiting = (
+        awaiting_refund_amount and not refund_intent and not _NEW_QUESTION.search(message.text)
     )
     refund_amount = max(dollar_values) if refund_intent and dollar_values else None
     if refund_amount is not None and refund_amount > REFUND_LIMIT_USD:
@@ -232,8 +243,8 @@ def evaluate(message: NormalizedMessage, *, awaiting_refund_amount: bool = False
     )
     return RuleResult(
         reasons=tuple(reasons),
-        refund_intent=refund_intent or awaiting_refund_amount,
+        refund_intent=refund_intent or still_waiting,
         refund_amount_usd=refund_amount,
-        ask_refund_amount=(refund_intent or awaiting_refund_amount) and refund_amount is None,
+        ask_refund_amount=(refund_intent or still_waiting) and refund_amount is None,
         prompt_injection=injection,
     )

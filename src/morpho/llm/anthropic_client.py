@@ -11,7 +11,17 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
-from morpho.llm.base import Completion, Message, ToolCall, ToolRunner, ToolSpec, Usage
+import anthropic
+
+from morpho.llm.base import (
+    Completion,
+    LLMUnavailableError,
+    Message,
+    ToolCall,
+    ToolRunner,
+    ToolSpec,
+    Usage,
+)
 
 MAX_TOKENS = 16_000
 
@@ -44,14 +54,17 @@ class AnthropicClient:
         options: dict[str, Any] = {"output_config": {"effort": self.effort}} if self.effort else {}
         usage, made = Usage(), []
         for round_number in range(max_tool_rounds + 1):
-            response = self._client.messages.create(
-                model=self.model,
-                max_tokens=MAX_TOKENS,
-                system=instructions,
-                messages=history,
-                tools=tool_params,
-                **options,
-            )
+            try:
+                response = self._client.messages.create(
+                    model=self.model,
+                    max_tokens=MAX_TOKENS,
+                    system=instructions,
+                    messages=history,
+                    tools=tool_params,
+                    **options,
+                )
+            except anthropic.AnthropicError as exc:  # after the SDK's own retries
+                raise LLMUnavailableError(f"{exc.__class__.__name__}: {exc}") from exc
             usage += usage_from(response.usage)
             tool_uses = [block for block in response.content if block.type == "tool_use"]
             wants_tools = response.stop_reason == "tool_use" and bool(tool_uses)

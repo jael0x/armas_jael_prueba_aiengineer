@@ -25,6 +25,7 @@ def test_mock_table_matches_the_challenge() -> None:
     }
 
 
+@pytest.mark.challenge
 def test_order_in_transit_reports_product_status_and_estimated_delivery() -> None:
     assert consultar_estado_pedido("ORD-1001") == {
         "encontrado": True,
@@ -41,6 +42,7 @@ def test_delivered_order_has_no_estimated_delivery() -> None:
     assert result["entrega_estimada"] is None
 
 
+@pytest.mark.challenge
 def test_unknown_order_is_not_found_without_invented_data() -> None:
     result = consultar_estado_pedido("ORD-9999")
     assert result == {
@@ -76,6 +78,7 @@ class _ForbiddenTable(Mapping[str, Mapping[str, str | None]]):
     "malformed",
     ["ORD-10011", "ORD-1001'; DROP TABLE", "../", "1001", "pedido 1001", "", "ORD-12A4"],
 )
+@pytest.mark.challenge
 def test_malformed_id_is_rejected_without_reading_the_orders(
     malformed: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
