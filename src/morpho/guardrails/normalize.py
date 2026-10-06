@@ -44,6 +44,6 @@ def normalize(raw: str) -> NormalizedMessage:
 
 def fold(text: str) -> str:
     """Lowercase, strip accents and collapse whitespace: "¿Envío?" -> "¿envio?"."""
-    decomposed = unicodedata.normalize("NFD", text.casefold())
+    decomposed = unicodedata.normalize("NFD", text.casefold().replace("\u2019", "'"))
     without_accents = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
     return _SPACES.sub(" ", without_accents).strip()

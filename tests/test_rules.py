@@ -25,6 +25,7 @@ def _check(text: str, *, awaiting_refund_amount: bool = False) -> RuleResult:
         ("Quiero hablar con un asesor", Reason.HUMAN_REQUEST),
     ],
 )
+@pytest.mark.challenge
 def test_case_reserved_for_people_is_escalated(message: str, reason: Reason) -> None:
     result = _check(message)
     assert result.escalate is True
@@ -105,6 +106,7 @@ def test_policy_questions_do_not_escalate(message: str) -> None:
     [
         "$500.01",
         "$1.200",
+        "$1 200",
         "1,200.50 dólares",
         "USD 600",
         "seiscientos dólares",
@@ -162,6 +164,12 @@ def test_bare_number_without_an_open_refund_request_is_not_a_refund() -> None:
 def test_follow_up_without_an_amount_asks_again() -> None:
     result = _check("no estoy seguro", awaiting_refund_amount=True)
     assert result.ask_refund_amount is True
+
+
+def test_new_question_while_waiting_for_the_amount_starts_a_new_topic() -> None:
+    result = _check("¿Cómo va mi pedido ORD-1001?", awaiting_refund_amount=True)
+    assert result.ask_refund_amount is False
+    assert result.refund_intent is False
 
 
 def test_return_with_an_amount_over_500_counts_as_a_refund() -> None:
@@ -223,3 +231,21 @@ def test_instruction_to_approve_a_refund_is_flagged_and_escalated(message: str) 
 )
 def test_prompt_injection_is_flagged(message: str) -> None:
     assert _check(message).prompt_injection is True
+
+
+@pytest.mark.parametrize(
+    ("message", "reason"),
+    [
+        ("El técnico me faltó el respeto", Reason.STAFF_COMPLAINT),
+        ("El empleado fue muy maleducado", Reason.STAFF_COMPLAINT),
+        ("La cajera fue descortés", Reason.STAFF_COMPLAINT),
+        ("Me cobraron 2 veces", Reason.BILLING_DISPUTE),
+        ("I was billed twice", Reason.BILLING_DISPUTE),
+    ],
+)
+def test_more_phrasings_are_escalated(message: str, reason: Reason) -> None:
+    assert reason in _check(message).reasons
+
+
+def test_year_like_amount_in_the_reply_escalates() -> None:
+    assert _check("1999", awaiting_refund_amount=True).reasons == (Reason.REFUND_OVER_LIMIT,)

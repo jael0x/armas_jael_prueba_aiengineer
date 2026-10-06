@@ -43,28 +43,37 @@ _NOT_AMOUNTS = [
     _DURATION,  # "30 días", "5-10 días hábiles"
 ]
 _HALF = re.compile(r"\bmedio (\d+)\b")  # "medio millón" becomes "medio 1000000"
-_WITH_CENTS = re.compile(r"\b(\d+) con (\d{1,2})\b")  # "quinientos con cincuenta" -> "500 con 50"
+# "quinientos con cincuenta" or "500 dólares con 50 centavos" -> 500.50
+# text2num turns "centavos" into "1/100", so that form is absorbed too.
+_WITH_CENTS = re.compile(
+    r"\b(\d+)( dolares| dollars| usd)? con (\d{1,2})(?: centavos| cents| 1/100)?(?![\w/])"
+)
 _NUMBER = re.compile(r"(?<![\w.,])\d+(?:[.,]\d+)*(?![\w])")
+# "1 200" with a space (or a no-break space) between thousands, as many people write it.
+_SPACED_THOUSANDS = re.compile(r"(?<![\w.,])\d{1,3}(?:[ \u00a0]\d{3})+(?![\w.,]?\d)")
 _YEAR = re.compile(r"(?:19|20)\d\d")
 
 _USD_BEFORE = re.compile(r"(?:\$|us\$|usd|u\$s)\s*$")
 _USD_AFTER = re.compile(r"^\s*(?:de\s+)?(?:usd|us\$|dolares|dolar|dollars?|bucks)\b")
 _OTHER_BEFORE = re.compile(r"(?:\bq|€|£|\bs/|\bmxn|\bcop|\beur|\bgtq)\s*$")
 _OTHER_AFTER = re.compile(
-    r"^\s*(?:de\s+)?(?:quetzales|quetzal|pesos?|euros?|soles?|colones|colon|lempiras?|bolivares"
-    r"|cordobas?|mxn|cop|gtq|eur)\b"
+    r"^\s*(?:€|£|(?:de\s+)?(?:quetzales|quetzal|pesos?|euros?|soles?|colones|colon|lempiras?"
+    r"|bolivares|cordobas?|mxn|cop|gtq|eur)\b)"
 )
 
 
-def extract_amounts(text: str) -> list[Amount]:
+def extract_amounts(text: str, *, keep_years: bool = False) -> list[Amount]:
+    """`keep_years` reads "1999" as an amount, for a reply to "¿de cuánto es el reembolso?"."""
     prepared = _prepare(text)
     amounts = []
     for match in _NUMBER.finditer(prepared):
         raw = match.group()
         before, after = prepared[: match.start()], prepared[match.end() :]
         currency = _currency(before, after)
-        if currency is Currency.UNKNOWN and _YEAR.fullmatch(raw):
+        if currency is Currency.UNKNOWN and not keep_years and _YEAR.fullmatch(raw):
             continue  # "compré en 2025" is a year, not an amount
+        if currency is Currency.UNKNOWN and sum(ch.isdigit() for ch in raw) >= 8:
+            continue  # "mi celular es 987654321" is a phone or an ID, not a price
         amounts.append(Amount(_parse_number(raw), currency))
     return amounts
 
@@ -76,9 +85,12 @@ def _prepare(text: str) -> str:
     folded = alpha2digit(folded, "es")
     folded = alpha2digit(folded, "en")
     folded = _HALF.sub(lambda m: str(int(m.group(1)) // 2), folded)
-    folded = _WITH_CENTS.sub(lambda m: f"{m.group(1)}.{int(m.group(2)):02d}", folded)
+    folded = _WITH_CENTS.sub(
+        lambda m: f"{m.group(1)}.{int(m.group(3)):02d}{m.group(2) or ''}", folded
+    )
     # Day counts written in words ("hace veinte días") only become digits after alpha2digit.
-    return _DURATION.sub(" ", folded)
+    folded = _DURATION.sub(" ", folded)
+    return _SPACED_THOUSANDS.sub(lambda m: re.sub(r"\s", "", m.group()), folded)
 
 
 def _currency(before: str, after: str) -> Currency:

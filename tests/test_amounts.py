@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from morpho.guardrails.amounts import Currency, extract_amounts
+from morpho.guardrails.amounts import Amount, Currency, extract_amounts
 
 
 def _values(text: str) -> list[tuple[Decimal, Currency]]:
@@ -57,3 +57,29 @@ def test_reads_every_amount_in_a_message() -> None:
 )
 def test_ignores_numbers_that_are_not_amounts(text: str) -> None:
     assert extract_amounts(text) == []
+
+
+def test_currency_symbol_after_the_number_is_not_read_as_dollars() -> None:
+    assert extract_amounts("Quiero un reembolso de 500 €") == [
+        Amount(Decimal("500"), Currency.OTHER)
+    ]
+
+
+def test_dollars_with_cents_in_words() -> None:
+    [amount] = extract_amounts("quinientos dólares con cincuenta centavos")
+    assert amount == Amount(Decimal("500.50"), Currency.USD)
+
+
+def test_space_as_thousands_separator() -> None:
+    assert extract_amounts("$12 000") == [Amount(Decimal("12000"), Currency.USD)]
+
+
+def test_long_digit_runs_are_phones_not_prices() -> None:
+    assert extract_amounts("$450, mi celular es 987654321") == [
+        Amount(Decimal("450"), Currency.USD)
+    ]
+
+
+def test_a_year_like_reply_counts_when_the_amount_was_asked() -> None:
+    assert extract_amounts("1999") == []
+    assert extract_amounts("1999", keep_years=True) == [Amount(Decimal("1999"), Currency.UNKNOWN)]
