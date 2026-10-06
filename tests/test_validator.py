@@ -101,3 +101,45 @@ def test_a_duration_the_customer_stated_can_be_repeated() -> None:
     customer = "La compré hace 45 días y tiene un defecto de fábrica"
     assert _problems(draft, {"doc1": DOC1}, customer=customer) == ()
     assert _problems(draft, {"doc1": DOC1}) == (DURATION,)
+
+
+def test_order_status_without_a_lookup_is_rejected() -> None:
+    assert ORDER_STATUS in _problems(
+        "Tu pedido ORD-1003 fue entregado.", customer="¿Ya llegó ORD-1003?"
+    )
+
+
+def test_a_status_word_in_a_policy_answer_is_not_an_order_status() -> None:
+    assert _problems("Los pedidos cancelados no generan cargo [Doc4].", {"doc4": "x"}) == ()
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "He aprobado tu reembolso de $300.",
+        "Te reembolsaré los $300 mañana.",
+        "I've gone ahead and approved your refund.",
+        "I\u2019ve approved your refund.",
+    ],
+)
+def test_other_ways_of_approving_are_rejected(draft: str) -> None:
+    assert APPROVAL in _problems(draft)
+
+
+def test_english_status_must_match_the_lookup() -> None:
+    draft = "Your order ORD-1001 was delivered yesterday."
+    assert ORDER_STATUS in _problems(draft, orders=["ORD-1001"], customer="ORD-1001")
+
+
+@pytest.mark.parametrize(
+    "draft", ["La garantía es de 2 años [Doc1].", "Tarda treinta días [Doc1]."]
+)
+def test_durations_in_years_or_words_must_come_from_the_sources(draft: str) -> None:
+    assert DURATION in _problems(draft, {"doc1": DOC1})
+
+
+def test_a_date_the_customer_gave_can_be_repeated() -> None:
+    draft = "Si la compraste el 15 de septiembre, la garantía de 12 meses aplica [Doc1]."
+    customer = "Compré mi lavadora el 15 de septiembre, ¿sigue en garantía?"
+    assert _problems(draft, {"doc1": DOC1}, customer=customer) == ()
+    assert DATE in _problems("Llega el 2026-10-15.")

@@ -13,6 +13,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from text_to_num import alpha2digit
+
 from morpho.guardrails.normalize import fold
 from morpho.tools.orders import ORDER_ID_EXAMPLE, normalize_order_id
 
@@ -28,19 +30,29 @@ _APPROVAL = re.compile(
         [
             r"\b(?:esta|fue|ha\s+sido|queda|quedo|quedara)\s+(?:aprobad|autorizad)\w*",
             r"\b(?:aprobe|autorice|apruebo|autorizo)\s+(?:tu|el|su)\s+reembolso",
-            r"\bte\s+(?:reembolsamos|reembolsaremos|devolvemos|devolveremos)\b",
+            r"\b(?:he|hemos|ha|han)\s+(?:aprobado|autorizado)\b",
+            r"\bte\s+(?:reembolso|reembolsare|reembolsamos|reembolsaremos|devolvere|devolvemos"
+            r"|devolveremos)\b",
             r"\b(?:procedemos|procederemos)\s+(?:con|a)\s+(?:el\s+|tu\s+)?reembols",
             r"\b(?:is|has\s+been|was)\s+(?:approved|authorized)\b",
             r"\bwe(?:'ll|\s+will)\s+refund\b",
             r"\bi(?:'ve|\s+have)?\s+(?:approved|authorized)\b",
+            r"\b(?:approved|authorized)\s+(?:your|the)\s+refund\b",
         ]
     )
 )
 _CITATION = re.compile(r"\[\s*doc\s*(\d+)\s*\]", re.IGNORECASE)
 _ORDER_ID = re.compile(r"\bORD[\s-]?\d{4}\b", re.IGNORECASE)
-_STATUSES = ("en transito", "entregado", "procesando", "cancelado")
+# Each status the tool returns, with the ways an answer can say it in Spanish or English.
+_STATUSES = {
+    "en transito": ("en transito", "in transit"),
+    "entregado": ("entregado", "delivered"),
+    "procesando": ("procesando", "processing"),
+    "cancelado": ("cancelado", "cancelled", "canceled"),
+}
 _DURATION = re.compile(
-    r"(\d+)(?:\s*(?:-|a|to|y|and)\s*(\d+))?\s*(?:dias?|meses|mes|days?|months?|business\s+days)\b"
+    r"(\d+)(?:\s*(?:-|a|to|y|and)\s*(\d+))?\s*"
+    r"(?:dias?|semanas?|meses|mes|anos?|horas?|days?|weeks?|months?|years?|hours?|business\s+days)\b"
 )
 _MONTHS = (
     "enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre"
@@ -48,7 +60,10 @@ _MONTHS = (
     "|december"
 )
 _DATE = re.compile(
-    rf"\b\d{{1,2}}\s+de\s+(?:{_MONTHS})\b|\b(?:{_MONTHS})\s+\d{{1,2}}\b|\b\d{{1,2}}/\d{{1,2}}\b"
+    rf"\b\d{{1,2}}\s+de\s+(?:{_MONTHS})\b"
+    rf"|\b(?:{_MONTHS})\s+\d{{1,2}}(?:st|nd|rd|th)?\b"
+    r"|\b\d{1,2}/\d{1,2}\b"
+    r"|\b\d{4}-\d{1,2}-\d{1,2}\b"
 )
 _NUMBER = re.compile(r"\d+")
 
@@ -91,23 +106,33 @@ def validate_answer(
     looked_up_statuses = {
         fold(str(result.get("estado"))) for result in lookups if result.get("encontrado")
     }
-    if lookups and any(s in folded and s not in looked_up_statuses for s in _STATUSES):
+    mentions_order = bool(lookups) or bool(_ORDER_ID.search(draft))
+    if mentions_order and any(
+        status not in looked_up_statuses and any(word in folded for word in words)
+        for status, words in _STATUSES.items()
+    ):
         problems.append(ORDER_STATUS)
 
     sources = list(source_texts) + [str(result.get("entrega_estimada") or "") for result in lookups]
     source_numbers = set(_NUMBER.findall(" ".join(fold(text) for text in sources)))
     # A duration the customer stated ("la compré hace 45 días") can be repeated back.
-    for match in _DURATION.finditer(fold(customer_text)):
+    for match in _DURATION.finditer(_digits(fold(customer_text))):
         source_numbers.update(n for n in match.groups() if n)
-    for match in _DURATION.finditer(folded):
+    for match in _DURATION.finditer(_digits(folded)):
         if any(n and n not in source_numbers for n in match.groups()):
             problems.append(DURATION)
             break
 
-    if _DATE.search(folded):
+    customer_dates = set(_DATE.findall(fold(customer_text)))
+    if any(date not in customer_dates for date in _DATE.findall(folded)):
         problems.append(DATE)
     return Validation(tuple(problems))
 
 
 def cited_documents(answer: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(f"doc{n}" for n in _CITATION.findall(answer)))
+
+
+def _digits(folded: str) -> str:
+    """Numbers written in words become digits, so "treinta días" is checked like "30 días"."""
+    return alpha2digit(alpha2digit(folded, "es"), "en")
