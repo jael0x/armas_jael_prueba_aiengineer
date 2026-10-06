@@ -363,7 +363,11 @@ $("run-tests").addEventListener("click", async () => {
   summary.className = "badge busy";
   summary.textContent = "Corriendo…";
   try {
-    const response = await fetch("/api/tests/live", { method: "POST" });
+    const response = await fetch("/api/tests/live", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || `Error ${response.status}`);

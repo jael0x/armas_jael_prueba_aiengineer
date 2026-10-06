@@ -6,18 +6,17 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import anthropic
 import pytest
 from starlette.testclient import TestClient
 
 from morpho.agent import Agent, ConversationState
 from morpho.config import Settings
 from morpho.evals.golden import load_golden
-from morpho.llm.base import ToolCall
+from morpho.llm.base import LLMUnavailableError, ToolCall
 from morpho.llm.fake import FakeLLM, FakeReply
 from morpho.records import HandoffLog, TraceLog
-from morpho.retrieval.retriever import Hit
-from morpho.web.server import InvalidKeyError, WebState, create_app
+from morpho.retrieval.retriever import Hit, load_thresholds
+from morpho.web.server import SCENARIOS, InvalidKeyError, WebState, create_app, main
 
 KEY = "sk-ant-test-key-0123456789"
 
@@ -58,7 +57,7 @@ def client_for() -> Iterator[Any]:
     clients: list[TestClient] = []
 
     def make(state: WebState) -> TestClient:
-        client = TestClient(create_app(state))
+        client = TestClient(create_app(state), base_url="http://127.0.0.1:8000")
         client.__enter__()  # runs the startup hook
         clients.append(client)
         return client
@@ -81,7 +80,7 @@ def test_without_a_key_the_page_says_so_and_chat_is_refused(client_for: Any) -> 
     status = client.get("/api/status").json()
     assert status["has_key"] is False
     assert status["model"] == "claude-haiku-4-5"
-    assert status["tau"] == pytest.approx(0.3342)
+    assert status["tau"] == load_thresholds(status["embedding_model"]).tau
     assert client.post("/api/chat", json={"message": "hola"}).status_code == 409
 
 
@@ -157,18 +156,18 @@ def test_model_errors_become_a_message(client_for: Any) -> None:
 
     class _Failing:
         def run_turn(self, raw_message: str, state: ConversationState) -> Any:
-            raise anthropic.AnthropicError("connection reset")
+            raise LLMUnavailableError("APIConnectionError: connection reset")
 
     state.agent = _Failing()
     response = client.post("/api/chat", json={"message": "¿Cuánto dura la garantía?"})
     assert response.status_code == 502
-    assert "AnthropicError" in response.json()["error"]
+    assert "connection reset" in response.json()["error"]
 
 
 def test_scenarios_come_from_the_golden_set(client_for: Any) -> None:
     cases = {case.id: case for case in load_golden()}
     items = client_for(_state()).get("/api/scenarios").json()
-    assert len(items) >= 10
+    assert len(items) == len(SCENARIOS)  # none silently dropped
     for item in items:
         assert item["text"] == cases[item["id"]].turns[0]
 
@@ -186,7 +185,7 @@ def _fake_pytest(tmp_path: Path) -> dict[str, Any]:
 def test_live_tests_stream_their_output_with_the_key(client_for: Any, tmp_path: Path) -> None:
     state = _state(key=KEY, **_fake_pytest(tmp_path))
     client = client_for(state)
-    output = client.post("/api/tests/live").text
+    output = client.post("/api/tests/live", json={}).text
     assert "$ uv run pytest -m live" in output
     assert "con key" in output
     assert "11 passed" in output
@@ -195,10 +194,11 @@ def test_live_tests_stream_their_output_with_the_key(client_for: Any, tmp_path: 
 
 
 def test_live_tests_need_a_key_and_a_copy_of_the_repo(client_for: Any, tmp_path: Path) -> None:
-    assert client_for(_state(**_fake_pytest(tmp_path))).post("/api/tests/live").status_code == 409
+    no_key = client_for(_state(**_fake_pytest(tmp_path)))
+    assert no_key.post("/api/tests/live", json={}).status_code == 409
     no_repo = client_for(_state(key=KEY, repo_root=None))
     assert no_repo.get("/api/status").json()["tests_available"] is False
-    assert no_repo.post("/api/tests/live").status_code == 409
+    assert no_repo.post("/api/tests/live", json={}).status_code == 409
 
 
 def _wait_for_embedder(client: TestClient) -> dict[str, Any]:
@@ -222,3 +222,80 @@ def test_a_failed_warm_up_is_reported(client_for: Any) -> None:
     status = _wait_for_embedder(client_for(_state(warm_up=fail)))
     assert status["embedder"] == "error"
     assert "no network" in status["embedder_error"]
+
+
+def test_page_explains_how_to_add_the_key(client_for: Any) -> None:
+    page = client_for(_state()).get("/").text
+    assert ".env" in page
+    assert "ANTHROPIC_API_KEY" in page
+
+
+def test_pasted_key_is_never_written_to_disk(
+    client_for: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = client_for(_state())
+    assert client.post("/api/key", json={"key": KEY}).status_code == 200
+    client.post("/api/chat", json={"message": "Quiero hablar con un asesor"})
+    assert not any(KEY in path.read_text() for path in tmp_path.rglob("*") if path.is_file())
+
+
+# --- requests from other sites (any page open in the browser could otherwise spend the key)
+
+
+def test_form_posts_from_other_sites_are_refused(client_for: Any) -> None:
+    client = client_for(_state(key=KEY))
+    body = '{"message": "hola"}'
+    response = client.post("/api/chat", content=body, headers={"Content-Type": "text/plain"})
+    assert response.status_code == 415
+    assert client.post("/api/tests/live").status_code == 415
+
+
+def test_requests_from_another_origin_are_refused(client_for: Any) -> None:
+    client = client_for(_state(key=KEY))
+    headers = {"Origin": "https://evil.example"}
+    response = client.post("/api/chat", json={"message": "hola"}, headers=headers)
+    assert response.status_code == 403
+    same = client.post(
+        "/api/chat", json={"message": "hola"}, headers={"Origin": "http://127.0.0.1:8000"}
+    )
+    assert same.status_code == 200
+
+
+def test_unknown_host_names_are_refused(client_for: Any) -> None:
+    client = client_for(_state(key=KEY))
+    assert client.get("/api/status", headers={"Host": "evil.example"}).status_code == 400
+
+
+@pytest.mark.parametrize("body", ["{oops", "[1, 2]"])
+def test_malformed_bodies_get_a_clear_error(client_for: Any, body: str) -> None:
+    client = client_for(_state(key=KEY))
+    headers = {"Content-Type": "application/json"}
+    assert client.post("/api/chat", content=body, headers=headers).status_code == 400
+
+
+# --- the single command
+
+
+def test_one_command_serves_on_localhost_and_opens_the_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+
+    import uvicorn
+
+    served: dict[str, Any] = {}
+    opened: list[str] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: served.update(kwargs))
+
+    class _Timer:
+        def __init__(self, _delay: float, function: Any, args: list[str]) -> None:
+            self.function, self.args = function, args
+
+        def start(self) -> None:
+            opened.extend(self.args)
+
+    monkeypatch.setattr(threading, "Timer", _Timer)
+    assert main(["--port", "8765"]) == 0
+    assert served["host"] == "127.0.0.1"
+    assert opened == [f"http://127.0.0.1:{served['port']}"]

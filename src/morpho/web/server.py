@@ -25,9 +25,12 @@ from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
+from urllib.parse import urlsplit
 
 import anthropic
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
@@ -45,7 +48,9 @@ from morpho.guardrails.output_validator import (
     ORDER_STATUS,
 )
 from morpho.knowledge.documents import get_document
+from morpho.llm.base import LLMUnavailableError
 from morpho.records import cost_usd
+from morpho.retrieval.embedder import EmbedderUnavailableError
 from morpho.retrieval.retriever import NotCalibratedError, load_thresholds
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -73,6 +78,7 @@ PROBLEM_LABELS = {
     "empty_answer": "llegó vacío",
     "stop_refusal": "el modelo se negó a responder",
     "stop_max_tokens": "se cortó por longitud",
+    "tool_limit": "quedó a mitad de las consultas de pedidos",
 }
 # Quick prompts for the chat, taken from the golden set so they stay in sync with the eval.
 SCENARIOS = (
@@ -148,7 +154,9 @@ class WebState:
         )
 
 
-def create_app(state: WebState) -> Starlette:
+def create_app(
+    state: WebState, allowed_hosts: Sequence[str] = ("127.0.0.1", "localhost")
+) -> Starlette:
     def index(_: Request) -> Response:
         return FileResponse(STATIC_DIR / "index.html")
 
@@ -156,7 +164,10 @@ def create_app(state: WebState) -> Starlette:
         return JSONResponse(_status(state))
 
     async def set_key(request: Request) -> JSONResponse:
-        key = str((await request.json()).get("key", "")).strip()
+        body = await _body(request)
+        if isinstance(body, JSONResponse):
+            return body
+        key = str(body.get("key", "")).strip()
         if not key.startswith("sk-ant-"):
             return _error(400, "Eso no parece una API key de Anthropic (empieza con sk-ant-).")
         try:
@@ -172,7 +183,9 @@ def create_app(state: WebState) -> Starlette:
         return JSONResponse(_status(state))
 
     async def chat(request: Request) -> JSONResponse:
-        body = await request.json()
+        body = await _body(request)
+        if isinstance(body, JSONResponse):
+            return body
         if state.agent is None:
             return _error(409, "Falta la API key de Anthropic.")
         conversation_id = body.get("conversation_id") or uuid.uuid4().hex[:12]
@@ -183,8 +196,10 @@ def create_app(state: WebState) -> Starlette:
             result, latency_ms = await asyncio.to_thread(
                 _run_turn, state, str(body.get("message", "")), conversation
             )
-        except anthropic.AnthropicError as exc:  # the API or the network failed
-            return _error(502, f"No se pudo contactar al modelo ({exc.__class__.__name__}).")
+        except LLMUnavailableError as exc:
+            return _error(502, f"No se pudo contactar al modelo: {exc}")
+        except EmbedderUnavailableError as exc:
+            return _error(503, f"No se pudo cargar el modelo de embeddings: {exc}")
         return JSONResponse(_turn_payload(state.settings, conversation_id, result, latency_ms))
 
     def scenarios(_: Request) -> JSONResponse:
@@ -196,7 +211,10 @@ def create_app(state: WebState) -> Starlette:
         ]
         return JSONResponse(items)
 
-    async def live_tests(_: Request) -> Response:
+    async def live_tests(request: Request) -> Response:
+        rejected = _cross_site(request)
+        if rejected is not None:
+            return rejected
         if not state.tests_available:
             return _error(409, "Las pruebas solo corren desde una copia del repositorio.")
         if state.agent is None:
@@ -220,7 +238,9 @@ def create_app(state: WebState) -> Starlette:
         state.start()
         yield
 
-    return Starlette(routes=routes, lifespan=lifespan)
+    # Host check: a page that rebinds its own domain to 127.0.0.1 is still refused.
+    middleware = [Middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))]
+    return Starlette(routes=routes, middleware=middleware, lifespan=lifespan)
 
 
 def _run_turn(
@@ -309,6 +329,34 @@ def _turn_payload(
 
 def _error(status: int, message: str) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=status)
+
+
+def _cross_site(request: Request) -> JSONResponse | None:
+    """Refuses requests another site could send from the reviewer's browser.
+
+    Requiring a JSON body makes the browser ask permission first (a CORS preflight this server
+    never grants), and an Origin from another site is refused outright. Without this, any page
+    open while the UI runs could spend the Claude key through /api/chat.
+    """
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        return _error(415, "La petición debe ser JSON.")
+    origin = request.headers.get("origin")
+    if origin is not None and urlsplit(origin).netloc != request.headers.get("host"):
+        return _error(403, "Origen no permitido.")
+    return None
+
+
+async def _body(request: Request) -> dict[str, Any] | JSONResponse:
+    rejected = _cross_site(request)
+    if rejected is not None:
+        return rejected
+    try:
+        body = await request.json()
+    except ValueError:
+        return _error(400, "El cuerpo de la petición no es JSON válido.")
+    if not isinstance(body, dict):
+        return _error(400, "El cuerpo de la petición debe ser un objeto JSON.")
+    return body
 
 
 def _check_key(key: str) -> None:
