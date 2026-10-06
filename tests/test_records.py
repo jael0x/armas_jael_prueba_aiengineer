@@ -1,8 +1,10 @@
+import json
 import re
+from pathlib import Path
 
 from morpho.guardrails.rules import Reason
 from morpho.llm.base import Usage
-from morpho.records import HandoffLog, cost_usd
+from morpho.records import HandoffLog, TraceLog, cost_usd
 
 
 def test_handoff_reference_has_the_expected_shape() -> None:
@@ -34,3 +36,28 @@ def test_cost_uses_cached_and_output_prices() -> None:
 
 def test_unknown_model_costs_zero() -> None:
     assert cost_usd("fake-llm", Usage(1_000, 100)) == 0.0
+
+
+def test_trace_numbers_survive_redaction(tmp_path: Path) -> None:
+    log = TraceLog(tmp_path / "traces.jsonl")
+    usage = Usage(input_tokens=4013, output_tokens=0, cached_tokens=1)  # USD 0.0040121
+    log.record(
+        conversation_id="c1",
+        turn=1,
+        model="claude-haiku-4-5",
+        path="answered",
+        language="es",
+        usage=usage,
+        llm_requests=1,
+        rule_ids=(),
+        handoff_reference=None,
+        retrieved=[],
+        order_ids=["ORD-1001"],
+        tool_calls=0,
+        validation_problems=(),
+        latency_ms=12345678.9,
+    )
+    [line] = (tmp_path / "traces.jsonl").read_text().splitlines()
+    trace = json.loads(line)
+    assert trace["morpho.cost_usd"] == cost_usd("claude-haiku-4-5", usage)
+    assert trace["morpho.latency_ms"] == 12345678.9

@@ -26,9 +26,10 @@ from morpho.guardrails.pii import contains_card_number
 from morpho.guardrails.rules import Reason, evaluate
 from morpho.knowledge.documents import get_document
 from morpho.language import Language, detect_language
-from morpho.llm.base import Completion, LLMClient, Message, ToolCall, Usage
+from morpho.llm.base import Completion, LLMClient, LLMUnavailableError, Message, ToolCall, Usage
 from morpho.prompts import ORDER_TOOL, TEMPLATES, build_instructions
 from morpho.records import Handoff, HandoffLog, TraceLog
+from morpho.retrieval.embedder import EmbedderUnavailableError
 from morpho.retrieval.retriever import Hit
 from morpho.tools.orders import consultar_estado_pedido, normalize_order_id
 
@@ -120,13 +121,16 @@ class Agent:
             handoff = self.handoffs.record(state.conversation_id, rules.reasons, message.text)
             residual = _residual_question(message.text)
             if residual:
-                draft = self._draft(
-                    residual,
-                    language,
-                    state,
-                    escalated_elsewhere=True,
-                    injection=rules.prompt_injection,
-                )
+                try:
+                    draft = self._draft(
+                        residual,
+                        language,
+                        state,
+                        escalated_elsewhere=True,
+                        injection=rules.prompt_injection,
+                    )
+                except (LLMUnavailableError, EmbedderUnavailableError):
+                    draft = None  # the handoff is recorded: the customer still gets its reference
                 if draft:
                     parts.append(draft.text)
             if rules.prompt_injection:
@@ -218,17 +222,19 @@ class Agent:
         refund_amount_usd: Decimal | None = None,
     ) -> _Draft | None:
         """Ask the model about `question`, or return None when there is nothing to answer from."""
-        hits = self.retriever.retrieve(question)
+        # A reply like "$300" to "¿de cuánto es el reembolso?" only matches Doc 4 with context.
+        hits = self.retriever.retrieve(
+            f"reembolso {question}" if refund_amount_usd is not None else question
+        )
         if not hits and not _order_ids(question):
             return None
         documents = [get_document(hit.doc_id) for hit in hits]
         lookups: list[dict[str, Any]] = []
 
         def run_tool(call: ToolCall) -> dict[str, Any]:
-            if call.name == ORDER_TOOL.name:
-                result = consultar_estado_pedido(str(call.arguments.get("order_id", "")))
-            else:
-                result = {"error": "herramienta_desconocida", "mensaje": f"No existe {call.name}."}
+            if call.name != ORDER_TOOL.name:
+                return {"error": "herramienta_desconocida", "mensaje": f"No existe {call.name}."}
+            result = consultar_estado_pedido(str(call.arguments.get("order_id", "")))
             lookups.append(result)
             return result
 
@@ -256,6 +262,8 @@ class Agent:
             problems = (*problems, "empty_answer")
         if completion.stop_reason in _UNFINISHED_STOPS:
             problems = (*problems, f"stop_{completion.stop_reason}")
+        if completion.hit_tool_limit:  # the model still wanted a tool: its text is a preamble
+            problems = (*problems, "tool_limit")
         text = _BOLD.sub(r"\1", completion.text).strip()
         if problems:
             templates = TEMPLATES[language]

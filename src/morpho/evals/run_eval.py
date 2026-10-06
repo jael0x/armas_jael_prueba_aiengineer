@@ -21,13 +21,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import anthropic
+
 from morpho.agent import Agent, ConversationState, TurnResult
 from morpho.config import Settings, load_settings
 from morpho.evals.golden import GoldenCase, check, load_golden
 from morpho.evals.judge import METRICS, PASS_SCORE, ClaudeJudge, JudgeError, Verdict
 from morpho.guardrails.pii import contains_card_number
-from morpho.llm.base import Usage
+from morpho.llm.base import LLMUnavailableError, Usage
 from morpho.records import cost_usd
+from morpho.retrieval.embedder import EmbedderUnavailableError
 
 REPORT_DIR = Path("evals")
 COMMAND = "uv run python -m morpho.evals.run_eval"
@@ -86,11 +89,15 @@ class Report:
 def run_case(agent: Agent, case: GoldenCase) -> CaseRun:
     state, usage = ConversationState(), Usage()
     result, latency_ms = None, 0.0
-    for turn in case.turns:
-        started = time.perf_counter()
-        result = agent.run_turn(turn, state)
-        latency_ms = (time.perf_counter() - started) * 1000
-        usage += result.usage
+    try:
+        for turn in case.turns:
+            started = time.perf_counter()
+            result = agent.run_turn(turn, state)
+            latency_ms = (time.perf_counter() - started) * 1000
+            usage += result.usage
+    except (LLMUnavailableError, EmbedderUnavailableError) as exc:  # keep going; report it
+        failed = TurnResult(answer="", path="error", language="es")
+        return CaseRun(case, failed, [f"error: {exc}"], usage, latency_ms)
     assert result is not None, f"{case.id} has no turns"
     return CaseRun(case, result, check(case.expect, result), usage, latency_ms)
 
@@ -101,7 +108,7 @@ def grade(judge: ClaudeJudge, run: CaseRun) -> None:
         return
     try:
         run.verdict = judge.grade(run.case.turns, run.result)
-    except (JudgeError, json.JSONDecodeError, KeyError) as exc:
+    except (JudgeError, json.JSONDecodeError, KeyError, anthropic.AnthropicError) as exc:
         run.judge_error = f"{exc.__class__.__name__}: {exc}"
 
 
@@ -267,6 +274,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     cases = load_golden()
     if args.case:
+        unknown = sorted(set(args.case) - {case.id for case in cases})
+        if unknown:
+            print(f"Casos que no existen en el golden set: {', '.join(unknown)}", file=sys.stderr)
+            return 2
         cases = [case for case in cases if case.id in set(args.case)]
     var_dir = settings.var_dir / "eval"
     var_dir.mkdir(parents=True, exist_ok=True)
@@ -291,7 +302,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         runs.append(run)
         mark = "ok " if run.passed else "MAL"
         scores = "/".join(str(run.verdict.scores[m]) for m in METRICS) if run.verdict else ""
-        print(f"{mark} {case.id:<28} {run.result.path:<20} {scores} {'; '.join(run.problems)}")
+        notes = "; ".join(
+            [*run.problems, *([f"juez: {run.judge_error}"] if run.judge_error else [])]
+        )
+        print(f"{mark} {case.id:<28} {run.result.path:<20} {scores} {notes}")
 
     report = Report(runs, settings, records_have_cards(var_dir), judge.model if judge else None)
     args.out.mkdir(parents=True, exist_ok=True)

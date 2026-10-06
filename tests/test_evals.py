@@ -13,7 +13,7 @@ from morpho.evals.golden import PATHS, Expectation, GoldenCase, check, load_gold
 from morpho.evals.judge import METRICS, VERDICT_SCHEMA, ClaudeJudge, JudgeError
 from morpho.evals.run_eval import CaseRun, Report, records_have_cards, render_markdown, run_case
 from morpho.guardrails.rules import Reason
-from morpho.llm.base import Usage
+from morpho.llm.base import LLMUnavailableError, Usage
 from morpho.llm.fake import FakeLLM
 from morpho.records import HandoffLog, TraceLog
 from morpho.retrieval.retriever import Hit
@@ -183,3 +183,14 @@ def test_card_numbers_in_the_records_are_detected(tmp_path: Path) -> None:
     assert records_have_cards(tmp_path) is False
     (tmp_path / "traces.jsonl").write_text('{"x": "4111 1111 1111 1111"}\n')
     assert records_have_cards(tmp_path) is True
+
+
+def test_a_model_failure_is_reported_and_the_run_goes_on() -> None:
+    class _Failing:
+        def run_turn(self, raw_message: str, state: Any) -> TurnResult:
+            raise LLMUnavailableError("APIStatusError: overloaded")
+
+    case = GoldenCase("caso", 1, "politicas", ("hola",), Expectation(path=("answered",)))
+    run = run_case(_Failing(), case)  # type: ignore[arg-type]
+    assert run.passed is False
+    assert run.problems == ["error: APIStatusError: overloaded"]

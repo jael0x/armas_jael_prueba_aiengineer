@@ -90,6 +90,7 @@ def write_thresholds(model: str, result: Calibration, path: Path = THRESHOLDS_PA
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Calibrate the retrieval threshold τ.")
     parser.add_argument("--dry-run", action="store_true", help="print the report without writing")
+    parser.add_argument("--force", action="store_true", help="save τ even if it cannot separate")
     args = parser.parse_args(argv)
     model = load_settings().embedding_model
     embedder = CachedEmbedder(EmbeddingCache(), model)  # cache only: never runs the model
@@ -105,8 +106,13 @@ def main(argv: list[str] | None = None) -> int:
         f"mínimo dentro {result.min_in_domain}, máximo fuera {result.max_out_of_domain}, "
         f"separación {result.separation:+}, τ = {result.tau}"
     )
-    if result.separation <= 0:
-        print("Atención: separación no positiva; ningún τ separa todas las preguntas.")
+    if result.separation <= 0 and not args.force:
+        print(
+            "Separación no positiva: ningún τ separa todas las preguntas. No se guardó nada; "
+            "usa --force para guardarlo igual.",
+            file=sys.stderr,
+        )
+        return 1
     if not args.dry_run:
         write_thresholds(model, result)
         print(f"Guardado en {THRESHOLDS_PATH}")

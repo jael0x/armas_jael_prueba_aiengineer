@@ -47,10 +47,13 @@ class Settings:
         if effort is not None and effort not in EFFORTS:
             allowed = ", ".join(sorted(EFFORTS))
             raise ValueError(f"MORPHO_EFFORT={effort!r} is not one of: {allowed}")
+        llm_model = _value(env, "MORPHO_LLM_MODEL") or DEFAULT_LLM_MODEL
+        if effort is not None and llm_model.startswith("claude-haiku"):
+            raise ValueError(f"MORPHO_EFFORT does not apply to {llm_model}; leave it empty")
         models_dir = _value(env, "MORPHO_MODELS_DIR")
         return cls(
             anthropic_api_key=_value(env, "ANTHROPIC_API_KEY"),
-            llm_model=_value(env, "MORPHO_LLM_MODEL") or DEFAULT_LLM_MODEL,
+            llm_model=llm_model,
             judge_model=_value(env, "MORPHO_JUDGE_MODEL") or DEFAULT_JUDGE_MODEL,
             embedding_model=_value(env, "MORPHO_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL,
             effort=effort,

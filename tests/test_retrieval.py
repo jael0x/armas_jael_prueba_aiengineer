@@ -15,6 +15,7 @@ from morpho.guardrails.rules import evaluate
 from morpho.knowledge.documents import get_document
 from morpho.retrieval.embedder import (
     CachedEmbedder,
+    EmbedderUnavailableError,
     EmbeddingCache,
     FastEmbedEmbedder,
     Kind,
@@ -52,6 +53,7 @@ def policy_retriever() -> Retriever:
         ("How long is the warranty on a fridge?", "doc1"),
     ],
 )
+@pytest.mark.challenge
 def test_clear_question_retrieves_its_document_first(
     policy_retriever: Retriever, question: str, document: str
 ) -> None:
@@ -269,3 +271,17 @@ def test_calibration_leaves_out_questions_the_rules_escalate() -> None:
 
 def test_hit_is_a_plain_value() -> None:
     assert Hit("doc1", 0.5) == Hit("doc1", 0.5)
+
+
+def test_a_failed_model_load_is_reported_and_not_retried() -> None:
+    attempts: list[str] = []
+
+    def load(model: str, _cache_dir: str | None) -> _RecordingBackend:
+        attempts.append(model)
+        raise ValueError("Could not load model from any source")
+
+    embedder = FastEmbedEmbedder("m", load=load)
+    for _ in range(2):
+        with pytest.raises(EmbedderUnavailableError, match="Could not load"):
+            embedder.embed(["hola"], "query")
+    assert attempts == ["m"]

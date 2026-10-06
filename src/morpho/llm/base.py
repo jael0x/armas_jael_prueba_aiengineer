@@ -61,6 +61,10 @@ class Completion:
 ToolRunner = Callable[[ToolCall], dict[str, Any]]
 
 
+class LLMUnavailableError(RuntimeError):
+    """The model did not answer: network, quota, overload or a request the API rejected."""
+
+
 class LLMClient(Protocol):
     model: str
 

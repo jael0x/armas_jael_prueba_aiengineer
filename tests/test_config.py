@@ -45,3 +45,8 @@ def test_unknown_effort_is_rejected() -> None:
 
 def test_load_settings_works_without_an_api_key() -> None:
     assert load_settings().has_api_key is False
+
+
+def test_effort_is_refused_for_haiku() -> None:
+    with pytest.raises(ValueError, match="does not apply"):
+        Settings.from_env({"MORPHO_EFFORT": "low"})
