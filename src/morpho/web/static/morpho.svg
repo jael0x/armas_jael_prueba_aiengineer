@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="wing" x1="0" x2="1">
+      <stop offset="0" stop-color="#D8B4FE"/>
+      <stop offset="0.5" stop-color="#F0ABFC"/>
+      <stop offset="1" stop-color="#FDA4AF"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="#9333EA"/>
+  <path d="M16 16C12.5 7.5 5.5 7 6 13c.3 3.2 4 4.2 10 3Z" fill="url(#wing)"/>
+  <path d="M16 16c3.5-8.5 10.5-9 10-3-.3 3.2-4 4.2-10 3Z" fill="url(#wing)"/>
+  <path d="M16 16c-4 2-7.5 5.5-6 8.6 1.6 2.6 5-1.8 6-8.6Z" fill="url(#wing)" opacity="0.85"/>
+  <path d="M16 16c4 2 7.5 5.5 6 8.6-1.6 2.6-5-1.8-6-8.6Z" fill="url(#wing)" opacity="0.85"/>
+  <rect x="15.4" y="9" width="1.2" height="15" rx="0.6" fill="#FFFFFF"/>
+</svg>

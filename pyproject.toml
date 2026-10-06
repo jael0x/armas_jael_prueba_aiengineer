@@ -12,12 +12,15 @@ dependencies = [
     "mcp>=2.3.0,<3",
     "numpy>=2.5.3,<3",
     "python-dotenv>=1.2.4,<2",
+    "starlette>=1.7.0,<2",
     "text2num>=3.1.0,<4",
+    "uvicorn>=0.54.0,<1",
 ]
 
 [project.scripts]
 morpho = "morpho.cli:main"
 morpho-mcp = "morpho.mcp_server:main"
+morpho-ui = "morpho.web.server:main"
 
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]
@@ -25,6 +28,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28",
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
