@@ -2,7 +2,8 @@
 
 A draft is rejected when it approves a refund, cites a document that was not retrieved,
 mentions an order ID or status nobody looked up, or states a duration or calendar date that
-does not come from the documents or the order lookup. The agent then sends a fixed reply.
+does not come from the documents, the order lookup or the customer's own message. The agent then
+sends a fixed reply.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from morpho.guardrails.normalize import fold
-from morpho.tools.orders import normalize_order_id
+from morpho.tools.orders import ORDER_ID_EXAMPLE, normalize_order_id
 
 APPROVAL = "approval"
 CITATION = "citation"
@@ -83,6 +84,7 @@ def validate_answer(
 
     known_ids = {normalize_order_id(m) for m in _ORDER_ID.findall(customer_text)}
     known_ids |= {str(result.get("order_id")) for result in lookups}
+    known_ids.add(ORDER_ID_EXAMPLE)
     if any(normalize_order_id(m) not in known_ids for m in _ORDER_ID.findall(draft)):
         problems.append(ORDER_ID)
 
@@ -94,6 +96,9 @@ def validate_answer(
 
     sources = list(source_texts) + [str(result.get("entrega_estimada") or "") for result in lookups]
     source_numbers = set(_NUMBER.findall(" ".join(fold(text) for text in sources)))
+    # A duration the customer stated ("la compré hace 45 días") can be repeated back.
+    for match in _DURATION.finditer(fold(customer_text)):
+        source_numbers.update(n for n in match.groups() if n)
     for match in _DURATION.finditer(folded):
         if any(n and n not in source_numbers for n in match.groups()):
             problems.append(DURATION)

@@ -9,6 +9,7 @@ import morpho.config
 _ENV_VARS = (
     "ANTHROPIC_API_KEY",
     "MORPHO_LLM_MODEL",
+    "MORPHO_JUDGE_MODEL",
     "MORPHO_EMBEDDING_MODEL",
     "MORPHO_EFFORT",
     "MORPHO_MODELS_DIR",

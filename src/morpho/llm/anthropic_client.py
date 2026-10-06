@@ -52,7 +52,7 @@ class AnthropicClient:
                 tools=tool_params,
                 **options,
             )
-            usage += _usage(response.usage)
+            usage += usage_from(response.usage)
             tool_uses = [block for block in response.content if block.type == "tool_use"]
             wants_tools = response.stop_reason == "tool_use" and bool(tool_uses)
             if not wants_tools or round_number == max_tool_rounds:
@@ -80,12 +80,12 @@ class AnthropicClient:
         raise AssertionError("unreachable: the loop always returns on its last round")
 
 
-def _usage(raw: Any) -> Usage:
+def usage_from(raw: Any) -> Usage:
+    """Claude usage as a `Usage`: input counts uncached tokens plus cache reads and writes."""
     if raw is None:
         return Usage()
     cache_read = getattr(raw, "cache_read_input_tokens", 0) or 0
     cache_write = getattr(raw, "cache_creation_input_tokens", 0) or 0
-    # Claude reports uncached input apart from cache reads and writes; Usage counts all input.
     return Usage(
         input_tokens=raw.input_tokens + cache_read + cache_write,
         output_tokens=raw.output_tokens,
