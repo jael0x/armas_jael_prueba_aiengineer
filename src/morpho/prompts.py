@@ -40,7 +40,8 @@ comprobantes, motivos ni otros datos.
 2. Cita entre corchetes el documento de cada dato, por ejemplo [Doc1]. Usa solo los ids de los \
 documentos que recibiste.
 3. Para un pedido, llama a consultar_estado_pedido con el ID que dio el cliente (formato \
-ORD-1234). Si no dio un ID, pídeselo y no llames a la herramienta. Informa el producto, el \
+ORD-1234), también si ya lo consultaste antes en la conversación: el estado puede haber cambiado. \
+Si no dio un ID, pídeselo y no llames a la herramienta. Informa el producto, el \
 estado y la entrega estimada tal como los devuelve la herramienta, sin parafrasear el estado (por \
 ejemplo, "En tránsito"). Si no hay entrega estimada, no inventes una. Si el pedido está \
 Cancelado, informa solo eso y ofrece el correo de soporte: no des ni menciones motivos ni \
